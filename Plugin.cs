@@ -4,6 +4,7 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 using System.Linq;
+using System.IO;
 
 namespace CanoneerRestoration;
 
@@ -13,6 +14,10 @@ public class CanoneerRestoration : BaseUnityPlugin
     internal static new ManualLogSource Logger;
 
     public static ConfigEntry<int> CanoneerSpawnChance;
+
+    public static string BasePath { get; private set; } = string.Empty;
+    public static string ModelsPath { get; private set; } = string.Empty;
+    public static string TexturesPath { get; private set; } = string.Empty;
 
     private void Awake()
     {
@@ -25,59 +30,13 @@ public class CanoneerRestoration : BaseUnityPlugin
         Logger = base.Logger;
         Logger.LogInfo($"Plugin {MyPluginInfo.PLUGIN_GUID} is loaded!");
         
+        // Set paths
+        BasePath = Path.Combine(Paths.PluginPath, MyPluginInfo.PLUGIN_GUID);
+        BasePath = Path.Combine(BasePath, "Resources");
+        ModelsPath = Path.Combine(BasePath, "models");
+        TexturesPath = Path.Combine(BasePath, "textures");
+        
         var harmony = new Harmony(MyPluginInfo.PLUGIN_GUID);
         harmony.PatchAll();
-    }
-
-    private void Update()
-    {
-        // Press F9 in-game to trigger the dump
-        if (Input.GetKeyDown(KeyCode.F9))
-        {
-            DumpUnusedAssetReferences("SignManAttack");
-        }
-    }
-
-    private void DumpUnusedAssetReferences(string searchTerm)
-    {
-        Logger.LogInfo($"--- STARTING MEMORY DUMP FOR: '{searchTerm}' ---");
-
-        // 1. Search Meshes
-        Mesh[] meshes = Resources.FindObjectsOfTypeAll<Mesh>();
-        var matchingMeshes = meshes.Where(m => m.name.IndexOf(searchTerm, System.StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-        Logger.LogInfo($"Found {matchingMeshes.Count} matching Meshes:");
-        foreach (var mesh in matchingMeshes)
-        {
-            Logger.LogInfo($"  [Mesh] Name: {mesh.name} | Vertices: {mesh.vertexCount}");
-        }
-
-        // 2. Search Materials
-        Material[] materials = Resources.FindObjectsOfTypeAll<Material>();
-        var matchingMaterials = materials.Where(m => m.name.IndexOf(searchTerm, System.StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-        Logger.LogInfo($"Found {matchingMaterials.Count} matching Materials:");
-        foreach (var mat in matchingMaterials)
-        {
-            Logger.LogInfo($"  [Material] Name: {mat.name} | Shader: {mat.shader?.name}");
-        }
-
-        // 3. Search Textures
-        Texture2D[] textures = Resources.FindObjectsOfTypeAll<Texture2D>();
-        var matchingTextures = textures.Where(t => t.name.IndexOf(searchTerm, System.StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-        Logger.LogInfo($"Found {matchingTextures.Count} matching Textures:");
-        foreach (var tex in matchingTextures)
-        {
-            Logger.LogInfo($"  [Texture2D] Name: {tex.name} | Size: {tex.width}x{tex.height}");
-        }
-
-        // 4. Search Any Generic Inactive GameObjects
-        GameObject[] gameObjects = Resources.FindObjectsOfTypeAll<GameObject>();
-        var matchingGOs = gameObjects.Where(g => g.name.IndexOf(searchTerm, System.StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-        Logger.LogInfo($"Found {matchingGOs.Count} matching GameObjects in memory:");
-        foreach (var go in matchingGOs)
-        {
-            Logger.LogInfo($"  [GameObject] Name: {go.name} | Active In Hierarchy: {go.activeInHierarchy}");
-        }
-
-        Logger.LogInfo($"--- END MEMORY DUMP ---");
     }
 }

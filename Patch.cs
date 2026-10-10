@@ -17,7 +17,7 @@ public class Patch
                 GameObject child = __instance.gameObject.transform.GetChild(0).gameObject;
                 GameObject subChild = child.transform.GetChild(0).gameObject;
                 GameObject.Destroy(subChild);
-                //__instance.gameObject.GetComponent<ShamrockSpikedLogic>().Kill();
+                GameObject.Destroy(__instance.gameObject.GetComponent<ShamrockSpikedLogic>());
 
                 GameObject newHelmet = ObjParser.LoadCustomProp("Helmet.obj");
                 newHelmet.transform.parent = child.transform;
@@ -29,6 +29,9 @@ public class Patch
                 Texture2D texture = new Texture2D(2, 2);
                 texture.LoadImage(fileData);
                 newHelmet.GetComponent<MeshRenderer>().material.mainTexture = texture;
+
+                ShamrockCanoneerLogic canoneerLogic = __instance.gameObject.AddComponent<ShamrockCanoneerLogic>();
+                canoneerLogic.activated = true;
                 return;
             }
         }

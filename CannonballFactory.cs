@@ -2,6 +2,8 @@ using System;
 using System.Linq;
 using UnityEngine;
 
+namespace CanoneerRestoration;
+
 public static class CannonballFactory
 {
     private static GameObject _shrapnelPrefab;

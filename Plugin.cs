@@ -11,7 +11,7 @@ namespace CanoneerRestoration;
 [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 public class CanoneerRestoration : BaseUnityPlugin
 {
-    internal static new ManualLogSource Logger;
+    public static new ManualLogSource Logger;
 
     public static ConfigEntry<int> CanoneerSpawnChance;
 

@@ -14,10 +14,19 @@ public class Patch
             var random = new System.Random();
             if (CanoneerRestoration.CanoneerSpawnChance.Value >= random.Next(0, 100))
             {
+                GameObject spawnController;
+                bool trackPlayer;
+                bool detected;
+
                 GameObject child = __instance.gameObject.transform.GetChild(0).gameObject;
                 GameObject subChild = child.transform.GetChild(0).gameObject;
                 GameObject.Destroy(subChild);
+
+                spawnController = __instance.gameObject.GetComponent<ShamrockSpikedLogic>().spawnController;
+
                 GameObject.Destroy(__instance.gameObject.GetComponent<ShamrockSpikedLogic>());
+                trackPlayer = __instance.gameObject.GetComponent<ShamrockSpikedLogic>().trackPlayer;
+                detected = __instance.gameObject.GetComponent<ShamrockSpikedLogic>().detected;
 
                 GameObject newHelmet = ObjParser.LoadCustomProp("Helmet.obj");
                 newHelmet.transform.parent = child.transform;
@@ -31,9 +40,26 @@ public class Patch
                 newHelmet.GetComponent<MeshRenderer>().material.mainTexture = texture;
 
                 ShamrockCanoneerLogic canoneerLogic = __instance.gameObject.AddComponent<ShamrockCanoneerLogic>();
-                canoneerLogic.activated = true;
+                canoneerLogic.spawnController = spawnController;
+                canoneerLogic.trackPlayer = trackPlayer;
+                canoneerLogic.detected = detected;
                 return;
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(CannonballLogic), "Kill")]
+    public class CannonballLogicKill
+    {
+        public static bool Prefix(CannonballLogic __instance)
+        {
+            // Prevent NullReferenceException by using our custom shrapnel if the base game's prefab is null
+            // This is a defensive fix for when Kill() tries to instantiate a null prefab
+            if (__instance.shrapnel == null)
+            {
+                __instance.shrapnel = CannonballFactory.CreateShrapnelPrefab();
+            }
+            return true;
         }
     }
 }

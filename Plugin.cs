@@ -18,6 +18,7 @@ public class CanoneerRestoration : BaseUnityPlugin
     public static string BasePath { get; private set; } = string.Empty;
     public static string ModelsPath { get; private set; } = string.Empty;
     public static string TexturesPath { get; private set; } = string.Empty;
+    public static string AudioPath { get; private set; } = string.Empty;
 
     private void Awake()
     {
@@ -35,6 +36,7 @@ public class CanoneerRestoration : BaseUnityPlugin
         BasePath = Path.Combine(BasePath, "Resources");
         ModelsPath = Path.Combine(BasePath, "models");
         TexturesPath = Path.Combine(BasePath, "textures");
+        AudioPath = Path.Combine(BasePath, "audio");
         
         var harmony = new Harmony(MyPluginInfo.PLUGIN_GUID);
         harmony.PatchAll();

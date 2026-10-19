@@ -91,7 +91,7 @@ public static class CannonballFactory
 
         // Unity 4.6.1 Legacy Particle Assignment
         ps.startLifetime = 0.4f;
-        ps.startSpeed = 1.5f;
+        ps.startSpeed = 5f;
         ps.startSize = 0.8f;
         ps.startColor = new Color(1.0f, 0.5f, 0.5f, 0.8f);
         ps.gravityModifier = -1f;
@@ -125,7 +125,7 @@ public static class CannonballFactory
     {
         public float duration = 0.6f;
         public float lightIntensity = 3.0f;
-        public float explosionRadius = 4.0f;
+        public float explosionRadius = 3.0f;
         public float explosionForce = 500.0f;
         public AudioSource audioSource;
         public SphereCollider sphereCollider;
@@ -149,8 +149,7 @@ public static class CannonballFactory
             ParticleSystem ps = GetComponent<ParticleSystem>();
             if (ps != null)
             {
-                ps.transform.rotation = Quaternion.Euler(-90, 0, 0);
-                ps.Emit(60);
+                Spawn360Explosion(transform.position, ps.GetComponent<ParticleSystemRenderer>().material);
             }
 
             // Load explosion audio
@@ -173,6 +172,51 @@ public static class CannonballFactory
                 // Example: Apply damage if entity has a Hurt method
                 // hit.gameObject.SendMessage("Hurt", SendMessageOptions.DontRequireReceiver);
             }
+        }
+
+        public static void Spawn360Explosion(Vector3 position, Material particleMat)
+        {
+            GameObject exp = new GameObject("Cannonball_Explosion");
+            exp.transform.position = position;
+
+            ParticleSystem ps = exp.AddComponent<ParticleSystem>();
+            
+            // Set base properties
+            ps.startLifetime = 0.8f;
+            ps.startSize = 1f;
+            ps.startColor = new Color(1.0f, 0.4f, 0.0f, 1.0f);
+            ps.gravityModifier = -0.5f;
+
+            ParticleSystemRenderer renderer = exp.GetComponent<ParticleSystemRenderer>();
+            renderer.material = particleMat;
+
+            // 1. Emit 200 particles in a single batch
+            int count = 200;
+            ps.Emit(count);
+
+            // 2. Grab the particles that were just created in memory
+            ParticleSystem.Particle[] particles = new ParticleSystem.Particle[count];
+            int numParticlesAlive = ps.GetParticles(particles);
+
+            // 3. Loop through every particle and assign a random 3D directional velocity
+            for (int i = 0; i < numParticlesAlive; i++)
+            {
+                // Random direction on a 3D sphere
+                Vector3 randomDir = UnityEngine.Random.onUnitSphere;
+                
+                // Vary the speed so some fly far and some stay closer
+                float speed = UnityEngine.Random.Range(3.0f, 8.0f); 
+
+                particles[i].velocity = randomDir * speed;
+                
+                // Optional: slight random size variation
+                particles[i].size = UnityEngine.Random.Range(0.8f, 1.5f);
+            }
+
+            // 4. Push the modified particles back into the system
+            ps.SetParticles(particles, numParticlesAlive);
+
+            UnityEngine.Object.Destroy(exp, 2.0f);
         }
 
         private IEnumerator LoadAudio(string path)

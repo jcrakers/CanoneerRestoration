@@ -13,8 +13,6 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 	public Transform cannonMouth;
 	public AudioSource audioSource;
 	public AudioClip fireCannon;
-	public float fireCooldown;
-	public float fireDelay = 2f;
 	public float detectDistance = 80f;
 	public int health = 6;
 	public bool detected; // Here for parity with ShamrockSpike
@@ -27,7 +25,11 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 	public float tooFarRange = 25f;
 
 	private Vector3 LockedPosition;
-	private enum State { Idle, TooClose, TooFar, PreparingShot, PostShot }
+	private float stunnedTimer = 0f;
+	private readonly float stunnedDuration = 1f;
+	private float preparationTimer = 0f;
+	private readonly float preparationDuration = 1f;
+	private enum State { Idle, Stunned, TooClose, TooFar, PreparingShot }
 	private State currentState = State.Idle;
 
 	public ShamrockCanoneerLogic()
@@ -73,64 +75,34 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 
 	public void Update()
 	{
-		if (player == null)
-		{
-			return;
-		}
-
-		float distance = Vector3.Distance(transform.position, player.transform.position);
-		if (distance > detectDistance)
-		{
-			detected = false;
-			return;
-		}
-		detected = true;
-
-		if (distance < tooCloseRange || distance > tooFarRange)
-		{
-			preparingShot = false;
-			if (rigidbody != null)
-			{
-				rigidbody.isKinematic = false;
-			}
-		}
-		else
-		{
-			PrepareShot();
-		}
-
-		Vector3 targetPos = new Vector3(player.transform.position.x, transform.position.y, player.transform.position.z);
-		Quaternion targetRotation = Quaternion.LookRotation(targetPos - transform.position);
-
-		fireCooldown -= Time.deltaTime;
-
+		// Check health and kill if needed
 		if (health <= 0)
 		{
 			Kill();
+			return;
 		}
 
-		if (trackPlayer && detected && preparingShot)
-		{
-			transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * 5f);
-			transform.position = new Vector3(LockedPosition.x, transform.position.y, LockedPosition.z);
+		// Update state transitions
+		UpdateStateTransitions();
 
-			if (Quaternion.Angle(transform.rotation, targetRotation) < 1f)
-			{
-				if (fireCooldown <= 0f)
-				{
-					FireShot();
-				}
-			}
-		}
-	}
-
-	private void PrepareShot()
-	{
-		LockedPosition = transform.position;
-		preparingShot = true;
-		if (rigidbody != null)
+		// Execute behavior based on current state
+		switch (currentState)
 		{
-			rigidbody.isKinematic = true;
+			case State.Idle:
+				HandleIdleState();
+				break;
+			case State.Stunned:
+				HandleStunnedState();
+				break;
+			case State.TooClose:
+				HandleTooCloseState();
+				break;
+			case State.TooFar:
+				HandleTooFarState();
+				break;
+			case State.PreparingShot:
+				HandlePreparingShotState();
+				break;
 		}
 	}
 
@@ -172,14 +144,13 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		GameObject smoke = CannonballFactory.CreateSmokePrefab();
 		smoke.transform.position = cannonMouth.position;
 		smoke.transform.rotation = cannonMouth.rotation;
-		// Don't parent to cannonMouth so it can auto-destroy independently
-		// smoke.transform.parent = cannonMouth;
 
-		fireCooldown = 3f;
+		preparationTimer = 0f;
 		preparingShot = false;
 		if (rigidbody != null)
 		{
 			rigidbody.isKinematic = false;
+			currentState = State.Idle;
 		}
 	}
 
@@ -192,6 +163,8 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 				audioSource.Play();
 			}
 			health--;
+			currentState = State.Stunned;
+			stunnedTimer = 0f;
 			if (spawnController != null)
 			{
 				spawnController.SendMessage("LostHealth");
@@ -223,6 +196,129 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 			if (animation != null)
 			{
 				animation.Play("FlyAway");
+			}
+		}
+	}
+
+	private void UpdateStateTransitions()
+	{
+		// Don't transition out of stunned state until timer expires
+		if (currentState == State.Stunned && stunnedTimer < stunnedDuration)
+		{
+			return;
+		}
+
+		// Don't transition out of PreparingShot state - only exit when firing or getting hit
+		if (currentState == State.PreparingShot)
+		{
+			return;
+		}
+
+		if (player == null)
+		{
+			currentState = State.Idle;
+			return;
+		}
+
+
+
+		float distance = Vector3.Distance(transform.position, player.transform.position);
+
+		// Check if player is out of detection range
+		if (distance > detectDistance)
+		{
+			currentState = State.Idle;
+			return;
+		}
+
+		// Check distance-based transitions
+		if (distance < tooCloseRange)
+		{
+			currentState = State.TooClose;
+		}
+		else if (distance > tooFarRange)
+		{
+			currentState = State.TooFar;
+		}
+		else
+		{
+			currentState = State.PreparingShot;
+			preparationTimer = 0f;
+		}
+	}
+
+	private void HandleIdleState()
+	{
+		preparingShot = false;
+		if (rigidbody != null)
+		{
+			rigidbody.isKinematic = false;
+		}
+	}
+
+	private void HandleStunnedState()
+	{
+		// Stunned behavior - enemy is temporarily disabled
+		preparingShot = false;
+		if (rigidbody != null)
+		{
+			rigidbody.isKinematic = false;
+		}
+
+		// Track stunned duration and recover
+		stunnedTimer += Time.deltaTime;
+		if (stunnedTimer >= stunnedDuration)
+		{
+			stunnedTimer = 0f;
+			currentState = State.Idle;
+		}
+	}
+
+	private void HandleTooCloseState()
+	{
+		detected = true;
+		if (rigidbody != null)
+		{
+			rigidbody.isKinematic = false;
+		}
+	}
+
+	private void HandleTooFarState()
+	{
+		detected = true;
+		if (rigidbody != null)
+		{
+			rigidbody.isKinematic = false;
+		}
+	}
+
+	private void HandlePreparingShotState()
+	{
+		detected = true;
+
+		LockedPosition = transform.position;
+		preparingShot = true;
+		if (rigidbody != null)
+		{
+			rigidbody.isKinematic = true;
+		}
+
+		Vector3 targetPos = new Vector3(player.transform.position.x, transform.position.y, player.transform.position.z);
+		Quaternion targetRotation = Quaternion.LookRotation(targetPos - transform.position);
+
+		preparationTimer += Time.deltaTime;
+
+		if (trackPlayer)
+		{
+			transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * 5f);
+			transform.position = new Vector3(LockedPosition.x, transform.position.y, LockedPosition.z);
+
+			if (Quaternion.Angle(transform.rotation, targetRotation) < 5f)
+			{
+				if (preparationTimer >= preparationDuration)
+				{
+					FireShot();
+				}
 			}
 		}
 	}

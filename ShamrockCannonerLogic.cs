@@ -13,6 +13,7 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 	public Transform cannonMouth;
 	public AudioSource audioSource;
 	public AudioClip fireCannon;
+	public AudioClip moveSound;
 	public float detectDistance = 80f;
 	public int health = 6;
 	public bool detected; // Here for parity with ShamrockSpike
@@ -21,14 +22,30 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 	public bool spawning;
 	public float verticalVelocity = 5f;
 	public float detectionRange;
-	public float tooCloseRange = 15f;
-	public float tooFarRange = 25f;
+	
+	
+	
+	private readonly float extraGravity = 15f;
 
-	private Vector3 LockedPosition;
+	private readonly float tooCloseRange = 15f;
+	private readonly float tooFarRange = 25f;
+
+	private readonly float knockbackForce = 5f;
+
+	private float moveTimer = 0f;
+	private readonly float moveCooldown = 0.3f;
+	private readonly float movementForce = 16f;
+	private readonly float movementJumpForce = 17f;
+	private readonly float avoidWallAngle = 35f;
+	private readonly float wallCheckDistance = 8f;
+	private readonly float wallCheckAngle = 45f;
+
 	private float stunnedTimer = 0f;
-	private readonly float stunnedDuration = 1f;
+	private readonly float stunnedDuration = 2f;
+
 	private float preparationTimer = 0f;
 	private readonly float preparationDuration = 1f;
+
 	private enum State { Idle, Stunned, TooClose, TooFar, PreparingShot }
 	private State currentState = State.Idle;
 
@@ -51,17 +68,31 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		string audioPath = System.IO.Path.Combine(CanoneerRestoration.AudioPath, "fireCannon.wav");
 		if (System.IO.File.Exists(audioPath))
 		{
-			StartCoroutine(LoadAudio(audioPath));
+			StartCoroutine(LoadAudio(audioPath, "fireCannon"));
+		}
+		
+		// Load move sound
+		string moveSoundPath = System.IO.Path.Combine(CanoneerRestoration.AudioPath, "cow.wav");
+		if (System.IO.File.Exists(moveSoundPath))
+		{
+			StartCoroutine(LoadAudio(moveSoundPath, "cow"));
 		}
 	}
 
-	private System.Collections.IEnumerator LoadAudio(string path)
+	private System.Collections.IEnumerator LoadAudio(string path, string audioName)
 	{
 		WWW www = new WWW("file://" + path);
 		yield return www;
 		if (www.error == null)
 		{
-			fireCannon = www.audioClip;
+			if (audioName == "fireCannon")
+			{
+				fireCannon = www.audioClip;
+			}
+			else if (audioName == "cow")
+			{
+				moveSound = www.audioClip;
+			}
 		}
 	}
 
@@ -80,6 +111,11 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		{
 			Kill();
 			return;
+		}
+
+		if (!IsGrounded())
+		{
+			rigidbody.AddForce(Vector3.down * extraGravity, ForceMode.Acceleration);
 		}
 
 		// Update state transitions
@@ -150,8 +186,12 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		if (rigidbody != null)
 		{
 			rigidbody.isKinematic = false;
-			currentState = State.Idle;
+			currentState = State.Stunned;
+			stunnedTimer = 0f;
 		}
+
+		// Apply movement force
+		rigidbody?.AddForce(-transform.forward * 8, ForceMode.Impulse);
 	}
 
 	public void OnCollisionEnter(Collision col)
@@ -163,11 +203,29 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 				audioSource.Play();
 			}
 			health--;
-			currentState = State.Stunned;
-			stunnedTimer = 0f;
+
+			if (currentState == State.Stunned)
+			{
+				currentState = State.Idle;
+				stunnedTimer = 0f;
+			}
+			else if (currentState == State.PreparingShot)
+			{
+				currentState = State.Stunned;
+				stunnedTimer = 0f;
+				preparationTimer = 0f;
+			}
+			
 			if (spawnController != null)
 			{
 				spawnController.SendMessage("LostHealth");
+			}
+
+			// Apply knockback force
+			if (rigidbody != null)
+			{
+				Vector3 knockbackDirection = (transform.position - col.transform.position).normalized;
+				rigidbody.AddForce(knockbackDirection * knockbackForce, ForceMode.Impulse);
 			}
 		}
 	}
@@ -178,10 +236,9 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		{
 			spawnController.SendMessage("Increment");
 		}
-		if (explosion != null)
-		{
-			Instantiate(explosion, transform.position, transform.rotation);
-		}
+		GameObject explosion = CannonballFactory.CreateShrapnelPrefab();
+		explosion.transform.position = transform.position;
+
 		if (trigger != null)
 		{
 			Destroy(trigger);
@@ -203,8 +260,14 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 	private void UpdateStateTransitions()
 	{
 		// Don't transition out of stunned state until timer expires
-		if (currentState == State.Stunned && stunnedTimer < stunnedDuration)
+		if (currentState == State.Stunned)
 		{
+			stunnedTimer += Time.deltaTime;
+			if (stunnedTimer >= stunnedDuration)
+			{
+				stunnedTimer = 0f;
+				currentState = State.Idle;
+			}
 			return;
 		}
 
@@ -220,14 +283,18 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 			return;
 		}
 
-
-
 		float distance = Vector3.Distance(transform.position, player.transform.position);
 
 		// Check if player is out of detection range
 		if (distance > detectDistance)
 		{
 			currentState = State.Idle;
+			return;
+		}
+
+		// Only transition out of idle if we have line of sight
+		if (currentState == State.Idle && !HasLineOfSight())
+		{
 			return;
 		}
 
@@ -242,9 +309,35 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		}
 		else
 		{
-			currentState = State.PreparingShot;
-			preparationTimer = 0f;
+			if (IsGrounded())
+			{
+				currentState = State.PreparingShot;
+				preparationTimer = 0f;
+			}
 		}
+	}
+
+	private bool HasLineOfSight()
+	{
+		if (player == null) return false;
+
+		Vector3 direction = (player.transform.position - transform.position).normalized;
+		float distance = Vector3.Distance(transform.position, player.transform.position);
+
+		// Offset starting position by 1 unit along direction to step OUTSIDE this enemy's collider
+		Vector3 rayStart = transform.position + (direction * 1.0f);
+
+		RaycastHit hit;
+		if (Physics.Raycast(rayStart, direction, out hit, distance - 1.0f))
+		{
+			// If it hit something other than the player, LOS is blocked
+			if (hit.transform != player.transform)
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private void HandleIdleState()
@@ -264,14 +357,6 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		{
 			rigidbody.isKinematic = false;
 		}
-
-		// Track stunned duration and recover
-		stunnedTimer += Time.deltaTime;
-		if (stunnedTimer >= stunnedDuration)
-		{
-			stunnedTimer = 0f;
-			currentState = State.Idle;
-		}
 	}
 
 	private void HandleTooCloseState()
@@ -281,6 +366,7 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		{
 			rigidbody.isKinematic = false;
 		}
+		HandleMovement(false);
 	}
 
 	private void HandleTooFarState()
@@ -290,13 +376,18 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		{
 			rigidbody.isKinematic = false;
 		}
+		HandleMovement(true);
 	}
 
 	private void HandlePreparingShotState()
 	{
 		detected = true;
 
-		LockedPosition = transform.position;
+		if (!IsGrounded())
+		{
+			return;
+		}
+
 		preparingShot = true;
 		if (rigidbody != null)
 		{
@@ -311,9 +402,8 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		if (trackPlayer)
 		{
 			transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * 5f);
-			transform.position = new Vector3(LockedPosition.x, transform.position.y, LockedPosition.z);
 
-			if (Quaternion.Angle(transform.rotation, targetRotation) < 5f)
+			if (Quaternion.Angle(transform.rotation, targetRotation) < 10f)
 			{
 				if (preparationTimer >= preparationDuration)
 				{
@@ -321,6 +411,107 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 				}
 			}
 		}
+	}
+
+	private bool IsGrounded()
+	{
+		return Physics.Raycast(transform.position, Vector3.down, 1f);
+	}
+
+	private void HandleMovement(bool forward)
+	{
+		if (moveTimer >= moveCooldown)
+		{
+			moveTimer = 0f;
+		}
+		else
+		{
+			moveTimer += Time.deltaTime;
+			return;
+		}
+		
+		if (!IsGrounded())
+		{
+			return;
+		}
+
+		// 1. Check if there is a wall behind us closer than the player
+		bool wallBehind = false;
+		if (player != null)
+		{
+			float distToPlayer = Vector3.Distance(transform.position, player.transform.position);
+			if (Physics.Raycast(transform.position, -transform.forward, out RaycastHit backHit, wallCheckDistance))
+			{
+				if (backHit.distance < distToPlayer)
+				{
+					wallBehind = true;
+				}
+			}
+		}
+
+		// Force forward movement if backed against a wall
+		if (wallBehind)
+		{
+			forward = true;
+		}
+
+		if (player != null)
+		{
+			Vector3 targetPos = new Vector3(player.transform.position.x, transform.position.y, player.transform.position.z);
+			Quaternion targetRotation = Quaternion.LookRotation(targetPos - transform.position);
+			transform.rotation = targetRotation;
+		}
+
+		// 2. Determine base direction vector
+		Vector3 baseDir = forward ? transform.forward : -transform.forward;
+
+		// 3. Side wall checks & 35-degree deflection
+		Vector3 leftDir = Quaternion.Euler(0f, wallCheckAngle, 0f) * transform.right;
+		Vector3 rightDir = Quaternion.Euler(0f, -wallCheckAngle, 0f) * transform.right;
+
+		bool hitLeft = Physics.Raycast(transform.position, leftDir, out RaycastHit leftHit, wallCheckDistance);
+		bool hitRight = Physics.Raycast(transform.position, rightDir, out RaycastHit rightHit, wallCheckDistance);
+
+		if (hitLeft || hitRight && !(hitLeft && hitRight))
+		{
+			if (hitLeft)
+			{
+				// Wall on the Left: Deflect 35 degrees to the Right
+				baseDir = Quaternion.Euler(0f, avoidWallAngle, 0f) * baseDir;
+			}
+			else
+			{
+				// Wall on the Right: Deflect 35 degrees to the Left
+				baseDir = Quaternion.Euler(0f, -avoidWallAngle, 0f) * baseDir;
+			}
+		}
+		else if (hitLeft && hitRight)
+		{
+			// Compare which wall is closer
+			if (leftHit.distance < rightHit.distance)
+			{
+				baseDir = Quaternion.Euler(0f, avoidWallAngle, 0f) * baseDir;
+			}
+			else
+			{
+				baseDir = Quaternion.Euler(0f, -avoidWallAngle, 0f) * baseDir;
+			}
+		}
+
+		// 4. Combine horizontal direction with vertical arc force
+		Vector3 jumpForce = (baseDir.normalized * movementForce) + (Vector3.up * movementJumpForce);
+
+		if (rigidbody != null)
+		{
+			rigidbody.isKinematic = false;
+			rigidbody.velocity = jumpForce;
+
+			// Set angular velocity for rolling around the pitch axis
+			float rollDirection = forward ? 1f : -1f;
+			rigidbody.angularVelocity = transform.right * (rollDirection * 15f);
+		}
+
+		audioSource.PlayOneShot(moveSound, 5f);
 	}
 
 	public void Main()

@@ -16,7 +16,7 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 	public AudioClip moveSound;
 	public float detectDistance = 80f;
 	public int health = 6;
-	public bool detected; // Here for parity with ShamrockSpike
+	public bool detected = false; // Here for parity with ShamrockSpike
 	public bool trackPlayer = true; // Here for parity with ShamrockSpike
 	public bool preparingShot = true;
 	public bool spawning;
@@ -104,6 +104,17 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		}
 	}
 
+	private bool IsWithinDetectionRange()
+	{
+		if (player == null)
+		{
+			return false;
+		}
+		
+		float distance = Vector3.Distance(transform.position, player.transform.position);
+		return distance <= detectDistance;
+	}
+
 	public void Update()
 	{
 		// Check health and kill if needed
@@ -116,6 +127,11 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		if (!IsGrounded())
 		{
 			rigidbody.AddForce(Vector3.down * extraGravity, ForceMode.Acceleration);
+		}
+
+		if (!detected)
+		{
+			detected = HasLineOfSight() && IsWithinDetectionRange();
 		}
 
 		// Update state transitions
@@ -293,7 +309,7 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		}
 
 		// Only transition out of idle if we have line of sight
-		if (currentState == State.Idle && !HasLineOfSight())
+		if (currentState == State.Idle && !detected)
 		{
 			return;
 		}
@@ -361,7 +377,6 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 
 	private void HandleTooCloseState()
 	{
-		detected = true;
 		if (rigidbody != null)
 		{
 			rigidbody.isKinematic = false;
@@ -371,7 +386,6 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 
 	private void HandleTooFarState()
 	{
-		detected = true;
 		if (rigidbody != null)
 		{
 			rigidbody.isKinematic = false;
@@ -381,8 +395,6 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 
 	private void HandlePreparingShotState()
 	{
-		detected = true;
-
 		if (!IsGrounded())
 		{
 			return;

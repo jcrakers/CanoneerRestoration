@@ -9,19 +9,17 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 	public GameObject player;
 	public GameObject explosion;
 	public GameObject trigger;
-	public GameObject spawnController;
+	public GameObject spawnControllerObject;
 	public Transform cannonMouth;
 	public AudioSource audioSource;
 	public AudioClip fireCannon;
 	public AudioClip moveSound;
-	public float detectDistance = 80f;
 	public int health = 6;
 	public bool detected = false; // Here for parity with ShamrockSpike
 	public bool trackPlayer = true; // Here for parity with ShamrockSpike
 	public bool preparingShot = true;
 	public bool spawning;
-	public float verticalVelocity = 5f;
-	public float detectionRange;
+	public float detectionRange = 80f;
 	
 	
 	
@@ -58,8 +56,8 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 	{
 		GameObject cannonMouthObj = new GameObject("CannonMouth");
 		cannonMouthObj.transform.parent = transform;
-		cannonMouthObj.transform.position = transform.position + new Vector3(0f, 2f, -0.5f);
-		cannonMouthObj.transform.rotation = Quaternion.Euler(-60f, 180f, 0f);
+		cannonMouthObj.transform.localPosition = new Vector3(0f, 2f, -0.5f);
+		cannonMouthObj.transform.localRotation = Quaternion.Euler(-40f, 0f, 0f);
 		cannonMouth = cannonMouthObj.transform;
 		player = GameObject.Find("Player");
 		audioSource = GetComponent<AudioSource>();
@@ -112,7 +110,7 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		}
 		
 		float distance = Vector3.Distance(transform.position, player.transform.position);
-		return distance <= detectDistance;
+		return distance <= detectionRange;
 	}
 
 	public void Update()
@@ -170,7 +168,7 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 
 		float distance = Vector3.Distance(cannonMouth.position, position);
 		float heightDiff = target.position.y - cannonMouth.position.y;
-		float angle = 0.7853982f; // ~45 degrees in radians
+		float angle = 0.6981317f; // ~40 degrees in radians
 
 		float velocity = Mathf.Sqrt(0.5f * gravity * distance * (Mathf.Tan(angle) * Mathf.Tan(angle) + 1f) / (Mathf.Tan(angle) - heightDiff / distance));
 
@@ -232,14 +230,16 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 				preparationTimer = 0f;
 			}
 			
-			if (spawnController != null)
+			if (spawnControllerObject != null)
 			{
-				spawnController.SendMessage("LostHealth");
+				ShamrockSpawnController spawnController = spawnControllerObject.GetComponent<ShamrockSpawnController>();
+				spawnController.LostHealth();
 			}
 
 			// Apply knockback force
 			if (rigidbody != null)
 			{
+				rigidbody.isKinematic = false;
 				Vector3 knockbackDirection = (transform.position - col.transform.position).normalized;
 				rigidbody.AddForce(knockbackDirection * knockbackForce, ForceMode.Impulse);
 			}
@@ -248,9 +248,10 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 
 	public void Kill()
 	{
-		if (spawning && spawnController != null)
+		if (spawning && spawnControllerObject != null)
 		{
-			spawnController.SendMessage("Increment");
+			ShamrockSpawnController spawnController = spawnControllerObject.GetComponent<ShamrockSpawnController>();
+			spawnController.Increment();
 		}
 		GameObject explosion = CannonballFactory.CreateShrapnelPrefab();
 		explosion.transform.position = transform.position;
@@ -302,7 +303,7 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 		float distance = Vector3.Distance(transform.position, player.transform.position);
 
 		// Check if player is out of detection range
-		if (distance > detectDistance)
+		if (distance > detectionRange)
 		{
 			currentState = State.Idle;
 			return;
@@ -427,7 +428,7 @@ public class ShamrockCanoneerLogic : MonoBehaviour
 
 	private bool IsGrounded()
 	{
-		return Physics.Raycast(transform.position, Vector3.down, 1f);
+		return Physics.Raycast(transform.position, Vector3.down, 1.1f);
 	}
 
 	private void HandleMovement(bool forward)

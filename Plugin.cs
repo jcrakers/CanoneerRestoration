@@ -2,8 +2,6 @@
 using BepInEx.Logging;
 using BepInEx.Configuration;
 using HarmonyLib;
-using UnityEngine;
-using System.Linq;
 using System.IO;
 
 namespace CanoneerRestoration;
@@ -23,8 +21,8 @@ public class CanoneerRestoration : BaseUnityPlugin
     private void Awake()
     {
         // Initialize config
-        CanoneerSpawnChance = Config.Bind("General", "Canoneer spawn chance", 33, 
-            new ConfigDescription("Chance for Canoneer to spawn instead of regular ShamrockSpiked (default: 33)", new AcceptableValueRange<int>(0, 100)));
+        CanoneerSpawnChance = Config.Bind("General", "Canoneer spawn chance", 37, 
+            new ConfigDescription("Chance for Canoneer to spawn instead of regular ShamrockSpiked (default: 37)", new AcceptableValueRange<int>(0, 100)));
 
 
         // Plugin startup logic
